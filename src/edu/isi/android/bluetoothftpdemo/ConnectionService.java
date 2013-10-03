@@ -3,6 +3,8 @@
  */
 package edu.isi.android.bluetoothftpdemo;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -18,6 +20,7 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.os.Environment;
 import android.util.Log;
+import android.widget.Toast;
 
 /**
  * This class does all the work for setting up and managing Bluetooth
@@ -43,6 +46,11 @@ public class ConnectionService {
 	private ConnectThread mConnectThread;
 	private ConnectedThread mConnectedThread;
 	private int mState;
+	private boolean isExtDrMounted;
+
+	private byte buffer[] = new byte[Short.MAX_VALUE];
+
+	private final File path;
 
 	// Constants that indicate the current connection state
 	public static final int STATE_NONE = 0; // we're doing nothing
@@ -65,6 +73,10 @@ public class ConnectionService {
 		context = bluetoothFileTransferActivity;
 		mAdapter = adapter;
 		mState = STATE_NONE;
+		isExtDrMounted = Environment.MEDIA_MOUNTED.equals(Environment
+				.getExternalStorageState());
+		path = Environment
+				.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
 	}
 
 	/**
@@ -184,7 +196,9 @@ public class ConnectionService {
 				try {
 					mmSocket.close();
 				} catch (IOException e2) {
-					Log.e(TAG, "unable to close() socket during connection failure", e2);
+					Log.e(TAG,
+							"unable to close() socket during connection failure",
+							e2);
 				}
 				connectionFailed();
 				return;
@@ -239,45 +253,55 @@ public class ConnectionService {
 
 		public void run() {
 			Log.i(TAG, "BEGIN mConnectedThread");
-			byte[] buffer = new byte[1024];
-			int bytes;
+			// byte[] buffer = new byte[1024];
 
 			// Keep listening to the InputStream while connected
 			while (true) {
 				try {
-					// Read from the InputStream
-					bytes = mmInStream.read(buffer);
-					
-					//TODO store bytes in the external storage
-					//check for external storage device
-					String state = Environment.getExternalStorageState();
-					File path, file;
+					// TODO store bytes in the external storage
+					// check for external storage device
+					File file;
 
-					if (Environment.MEDIA_MOUNTED.equals(state)) {
-					    // We can read and write the media
-					    path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-					    file = new File(path,"PifiMetadata.txt");
-					    
-					    try {
-					        // Make sure the Pictures directory exists.
-					        path.mkdirs();
+					if (isExtDrMounted) {
+						// Read from the InputStream
+						DataInputStream din = new DataInputStream(mmInStream);
+						String fileName = din.readUTF();
+						long fileLen = din.readLong();
 
-					        // Very simple code to copy a picture from the application's
-					        // resource into the external file.  Note that this code does
-					        // no error checking, and assumes the picture is small (does not
-					        // try to copy it in chunks).  Note that if external storage is
-					        // not currently mounted this will silently fail.
-					        OutputStream os = new FileOutputStream(file);
-					        os.write(buffer,0,1024);
-					        os.close();
+						// We can read and write the media
+						file = new File(path, fileName);
 
-					    } catch (IOException e) {
-					        // Unable to create file, likely because external storage is
-					        // not currently mounted.
-					        Log.e("ExternalStorage", "Error writing " + file, e);
-					    }
+						try {
+							// Make sure the Pictures directory exists.
+							path.mkdirs();
+
+							// Very simple code to copy a picture from the
+							// application's
+							// resource into the external file. Note that this
+							// code does
+							// no error checking, and assumes the picture is
+							// small (does not
+							// try to copy it in chunks). Note that if external
+							// storage is
+							// not currently mounted this will silently fail.
+							OutputStream os = new FileOutputStream(file);
+							while (fileLen > 0) {
+								fileLen -= din.read(buffer);
+								os.write(buffer);
+							}
+							os.close();
+							Toast.makeText(
+									context,
+									"File: " + fileName
+											+ " received siccessfully",
+									Toast.LENGTH_LONG).show();
+						} catch (IOException e) {
+							// Unable to create file, likely because external
+							// storage is
+							// not currently mounted.
+							Log.e("ExternalStorage", "Error writing " + file, e);
+						}
 					}
-
 
 					/*
 					 * // Send the obtained bytes to the UI Activity
@@ -299,10 +323,15 @@ public class ConnectionService {
 		 * 
 		 * @param buffer
 		 *            The bytes to write
+		 * @param nfName
+		 * @param len
 		 */
-		public void write(byte[] buffer) {
+		public void write(byte[] buffer, String nfName, long len) {
 			try {
-				mmOutStream.write(buffer);
+				DataOutputStream dos = new DataOutputStream(mmOutStream);
+				dos.writeUTF(nfName);
+				dos.writeLong(len);
+				dos.write(buffer);
 
 				/*
 				 * // Share the sent message back to the UI Activity
@@ -354,17 +383,15 @@ public class ConnectionService {
 	public synchronized void start() {
 		Log.d(TAG, "start");
 
-		/*// Cancel any thread attempting to make a connection
-		if (mConnectThread != null) {
-			mConnectThread.cancel();
-			mConnectThread = null;
-		}
-
-		// Cancel any thread currently running a connection
-		if (mConnectedThread != null) {
-			mConnectedThread.cancel();
-			mConnectedThread = null;
-		}*/
+		/*
+		 * // Cancel any thread attempting to make a connection if
+		 * (mConnectThread != null) { mConnectThread.cancel(); mConnectThread =
+		 * null; }
+		 * 
+		 * // Cancel any thread currently running a connection if
+		 * (mConnectedThread != null) { mConnectedThread.cancel();
+		 * mConnectedThread = null; }
+		 */
 
 		setState(STATE_LISTEN);
 
@@ -386,19 +413,15 @@ public class ConnectionService {
 	public synchronized void connect(BluetoothDevice device) {
 		Log.d(TAG, "connect to: " + device);
 
-		/*// Cancel any thread attempting to make a connection
-		if (mState == STATE_CONNECTING) {
-			if (mConnectThread != null) {
-				mConnectThread.cancel();
-				mConnectThread = null;
-			}
-		}
-
-		// Cancel any thread currently running a connection
-		if (mConnectedThread != null) {
-			mConnectedThread.cancel();
-			mConnectedThread = null;
-		}*/
+		/*
+		 * // Cancel any thread attempting to make a connection if (mState ==
+		 * STATE_CONNECTING) { if (mConnectThread != null) {
+		 * mConnectThread.cancel(); mConnectThread = null; } }
+		 * 
+		 * // Cancel any thread currently running a connection if
+		 * (mConnectedThread != null) { mConnectedThread.cancel();
+		 * mConnectedThread = null; }
+		 */
 
 		// Start the thread to connect with the given device
 		mConnectThread = new ConnectThread(device);
@@ -413,35 +436,34 @@ public class ConnectionService {
 	 *            The BluetoothSocket on which the connection was made
 	 * @param device
 	 *            The BluetoothDevice that has been connected
-	 * @param isServer TODO
+	 * @param isServer
+	 *            TODO
 	 */
 	public synchronized void connected(BluetoothSocket socket,
 			BluetoothDevice device, boolean isServer) {
 		Log.d(TAG, "connected");
 
 		// Cancel the thread that completed the connection
-		/*if (mConnectThread != null) {
-			mConnectThread.cancel();
-			mConnectThread = null;
-		}
-
-		// Cancel any thread currently running a connection
-		if (mConnectedThread != null) {
-			mConnectedThread.cancel();
-			mConnectedThread = null;
-		}*/
+		/*
+		 * if (mConnectThread != null) { mConnectThread.cancel(); mConnectThread
+		 * = null; }
+		 * 
+		 * // Cancel any thread currently running a connection if
+		 * (mConnectedThread != null) { mConnectedThread.cancel();
+		 * mConnectedThread = null; }
+		 */
 
 		// Cancel the accept thread because we only want to connect to one
 		// device
-		/*if (mAcceptThread != null) {
-			mAcceptThread.cancel();
-			mAcceptThread = null;
-		}*/
+		/*
+		 * if (mAcceptThread != null) { mAcceptThread.cancel(); mAcceptThread =
+		 * null; }
+		 */
 
 		// Start the thread to manage the connection and perform transmissions
 		mConnectedThread = new ConnectedThread(socket, isServer);
 		mConnectedThread.start();
-		
+
 		/*
 		 * // Send the name of the connected device back to the UI Activity
 		 * Message msg =
@@ -451,7 +473,7 @@ public class ConnectionService {
 		 */
 
 		setState(STATE_CONNECTED);
-		if(isServer){
+		if (isServer) {
 			write();
 		}
 	}
@@ -487,7 +509,7 @@ public class ConnectionService {
 	 *            The bytes to write
 	 * @see ConnectedThread#write(byte[])
 	 */
-	public void write() {
+	public synchronized void write() {
 		// Create temporary object
 		ConnectedThread r;
 		// Synchronize a copy of the ConnectedThread
@@ -497,49 +519,48 @@ public class ConnectionService {
 			r = mConnectedThread;
 		}
 		// Perform the write unsynchronized
-		//TODO store bytes in the external storage
-		//check for external storage device
-		String state = Environment.getExternalStorageState();
-		File path, file;
-		byte[] data = new byte[1024];
+		// TODO store bytes in the external storage
+		// check for external storage device
+		File file = null;
+		// byte[] data = new byte[1024];
 
-		if (Environment.MEDIA_MOUNTED.equals(state)) {
-		    // We can read and write the media
-		    path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-		    file = new File(path,"PifiMetadata.txt");
-		    
-		    try {
-		        // Make sure the Pictures directory exists.
-		        path.mkdirs();
+		if (isExtDrMounted) {
+			// We can read and write the media
+			file = new File(path, "PifiMetadata.txt");
 
-		        // Very simple code to copy a picture from the application's
-		        // resource into the external file.  Note that this code does
-		        // no error checking, and assumes the picture is small (does not
-		        // try to copy it in chunks).  Note that if external storage is
-		        // not currently mounted this will silently fail.
-		        InputStream is = new FileInputStream(file);
-		        is.read(data);
-		        is.close();
+			try {
+				// Make sure the Pictures directory exists.
+				path.mkdirs();
 
-		    } catch (IOException e) {
-		        // Unable to create file, likely because external storage is
-		        // not currently mounted.
-		        Log.e("ExternalStorage", "Error writing " + file, e);
-		    }
+				// Very simple code to copy a picture from the application's
+				// resource into the external file. Note that this code does
+				// no error checking, and assumes the picture is small (does not
+				// try to copy it in chunks). Note that if external storage is
+				// not currently mounted this will silently fail.
+				InputStream is = new FileInputStream(file);
+				is.read(buffer);
+				is.close();
+
+			} catch (IOException e) {
+				// Unable to create file, likely because external storage is
+				// not currently mounted.
+				Log.e("ExternalStorage", "Error writing " + file, e);
+			}
 		}
-		r.write(data);
+		r.write(buffer, file.getName(), file.length());
 	}
 
 	/**
 	 * Indicate that the connection attempt failed and notify the UI Activity.
 	 */
 	private void connectionFailed() {
-		/*// Send a failure message back to the Activity
-		Message msg = mHandler.obtainMessage(BluetoothChat.MESSAGE_TOAST);
-		Bundle bundle = new Bundle();
-		bundle.putString(BluetoothChat.TOAST, "Unable to connect device");
-		msg.setData(bundle);
-		mHandler.sendMessage(msg);*/
+		/*
+		 * // Send a failure message back to the Activity Message msg =
+		 * mHandler.obtainMessage(BluetoothChat.MESSAGE_TOAST); Bundle bundle =
+		 * new Bundle(); bundle.putString(BluetoothChat.TOAST,
+		 * "Unable to connect device"); msg.setData(bundle);
+		 * mHandler.sendMessage(msg);
+		 */
 
 		// Start the service over to restart listening mode
 		ConnectionService.this.start();
@@ -549,12 +570,13 @@ public class ConnectionService {
 	 * Indicate that the connection was lost and notify the UI Activity.
 	 */
 	private void connectionLost() {
-		/*// Send a failure message back to the Activity
-		Message msg = mHandler.obtainMessage(BluetoothChat.MESSAGE_TOAST);
-		Bundle bundle = new Bundle();
-		bundle.putString(BluetoothChat.TOAST, "Device connection was lost");
-		msg.setData(bundle);
-		mHandler.sendMessage(msg);*/
+		/*
+		 * // Send a failure message back to the Activity Message msg =
+		 * mHandler.obtainMessage(BluetoothChat.MESSAGE_TOAST); Bundle bundle =
+		 * new Bundle(); bundle.putString(BluetoothChat.TOAST,
+		 * "Device connection was lost"); msg.setData(bundle);
+		 * mHandler.sendMessage(msg);
+		 */
 
 		// Start the service over to restart listening mode
 		ConnectionService.this.start();
