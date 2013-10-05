@@ -66,6 +66,34 @@ public class ConnectionService {
 	public static final int STATE_CONNECTED = 3; // now connected to a remote
 													// device
 
+	
+	/**
+	 *  For control messages during data communication over sockets 
+	 */
+	private int dataState = NO_DATA_META;
+	
+	/*
+	 * Flag for no data transfer
+	 */
+	private static final int NO_DATA_META=0;
+	/*
+	 * Flag for identifying that data is from master
+	 */
+	private static final int DATA_FROM_MASTER=1000;
+	/*
+	 * Flag for identifying data to master
+	 */
+	private static final int DATA_TO_MASTER=1001;
+	/*
+	 * Flag for identifying meta data from master
+	 */
+	private static final int META_FROM_MASTER=1002;
+	/*
+	 * Flag for identifying meta data to master
+	 */
+	private static final int META_TO_MASTER=1003;
+	
+	
 	/**
 	 * Consturctor for the class.
 	 * 
@@ -605,6 +633,20 @@ public class ConnectionService {
 
 		// Start the service over to restart listening mode
 		ConnectionService.this.start();
+	}
+
+	/**
+	 * @return the dataState
+	 */
+	public synchronized int getDataState() {
+		return dataState;
+	}
+
+	/**
+	 * @param dataState the dataState to set
+	 */
+	public synchronized void setDataState(int dataState) {
+		this.dataState = dataState;
 	}
 
 }
