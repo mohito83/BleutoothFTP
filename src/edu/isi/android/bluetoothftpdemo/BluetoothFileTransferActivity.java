@@ -94,9 +94,11 @@ public class BluetoothFileTransferActivity extends Activity {
 		}
 
 		// 2. discover non-paired devices
-		mBluetoothAdapter.startDiscovery();
+		// mBluetoothAdapter.startDiscovery();
 
-		setupConnection();
+		if (connService != null) {
+			connectToDeviceAsMaster();
+		}
 
 	}
 
@@ -127,16 +129,13 @@ public class BluetoothFileTransferActivity extends Activity {
 		} else {
 			Log.d(TAG,
 					"Bluetooth is already enabled. Setting up the file transfer");
-			// TODO setup the bluetooth file transfer app
+			startServerThread();
 		}
 
-		if (connService == null) {
-			setupConnection();
-		}
 	}
 
 	@Override
-	public synchronized void onResume() {
+	public void onResume() {
 		super.onResume();
 		Log.i(TAG, "+ ON RESUME +");
 
@@ -175,16 +174,20 @@ public class BluetoothFileTransferActivity extends Activity {
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		switch (resultCode) {
+		switch (requestCode) {
 		case REQUEST_ENABLE_BT:
-			Log.i(TAG, "Bluetooth is enabled and discoverable on this device.");
-			Log.i(TAG, "Setting up the connections");
-			setupConnection();
+			if (resultCode == 300) {
+				Log.i(TAG,
+						"Bluetooth is enabled and discoverable on this device.");
+				Log.i(TAG, "Setting up the connections");
+				startServerThread();
+			} else {
+				Log.d(TAG, "User cancels the bluetooth activation. Exiting!!");
+				// finish();
+			}
 			break;
 
-		case RESULT_CANCELED:
-			Log.d(TAG, "User cancels the bluetooth activation. Exiting!!");
-			finish();
+		default:
 			break;
 		}
 	}
@@ -229,15 +232,31 @@ public class BluetoothFileTransferActivity extends Activity {
 	/**
 	 * This method setup the connections for socket communication
 	 */
-	private void setupConnection() {
+	private void startServerThread() {
 		if (connService == null)
 			connService = new ConnectionService(this, mBluetoothAdapter);
+		connService.start();
 
+		/*
+		 * // send data to the first device in the paired devices list if
+		 * (pairedDevices != null && !pairedDevices.isEmpty()) { BluetoothDevice
+		 * device = pairedDevices.iterator().next();
+		 * 
+		 * if (device != null) { connService.connect(device); } }
+		 */
+	}
+
+	private void connectToDeviceAsMaster() {
 		// send data to the first device in the paired devices list
 		if (pairedDevices != null && !pairedDevices.isEmpty()) {
 			BluetoothDevice device = pairedDevices.iterator().next();
 
 			if (device != null) {
+				Toast.makeText(
+						this,
+						"Connecting to device: " + device.getName() + "/"
+								+ device.getAddress(), Toast.LENGTH_LONG)
+						.show();
 				connService.connect(device);
 			}
 		}

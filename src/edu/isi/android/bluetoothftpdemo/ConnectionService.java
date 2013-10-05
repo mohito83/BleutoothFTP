@@ -7,10 +7,13 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.util.UUID;
 
 import android.bluetooth.BluetoothAdapter;
@@ -39,6 +42,8 @@ public class ConnectionService {
 	private static final String FTP_SERVICE = "CustomFTPService";
 	private static final UUID MY_UUID = UUID
 			.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66");
+	private static final String APP_CONTENT_FOLDER_NAME = "PiFiContent";
+	private static final String META_DATA_FILE_NAME = "videos.dat";
 
 	private Context context;
 	private BluetoothAdapter mAdapter;
@@ -50,7 +55,7 @@ public class ConnectionService {
 
 	private byte buffer[] = new byte[Short.MAX_VALUE];
 
-	private final File path;
+	private final File path, metaFile;
 
 	// Constants that indicate the current connection state
 	public static final int STATE_NONE = 0; // we're doing nothing
@@ -75,8 +80,27 @@ public class ConnectionService {
 		mState = STATE_NONE;
 		isExtDrMounted = Environment.MEDIA_MOUNTED.equals(Environment
 				.getExternalStorageState());
-		path = Environment
-				.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+		File sdr = Environment.getExternalStorageDirectory();
+		path = new File(sdr, APP_CONTENT_FOLDER_NAME);
+		if (!path.exists()) {
+			path.mkdir();
+		}
+		metaFile = new File(path, META_DATA_FILE_NAME);
+		if (!metaFile.exists()){
+			PrintWriter writer;
+			try {
+				writer = new PrintWriter("the-file-name.txt", "UTF-8");
+				writer.println("Hello World!!");
+				writer.close();
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (UnsupportedEncodingException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		}
 	}
 
 	/**
@@ -107,14 +131,16 @@ public class ConnectionService {
 			BluetoothSocket socket = null;
 
 			// Listen to the server socket if we're not connected
-			while (mState != STATE_CONNECTED) {
-				try {
-					// This is a blocking call and will only return on a
-					// successful connection or an exception
-					socket = mmServerSocket.accept();
-				} catch (IOException e) {
-					Log.e(TAG, "AcceptThread: accept() failed", e);
-					break;
+			while (true/* mState != STATE_CONNECTED */) {
+				if (mmServerSocket != null) {
+					try {
+						// This is a blocking call and will only return on a
+						// successful connection or an exception
+						socket = mmServerSocket.accept();
+					} catch (IOException e) {
+						Log.e(TAG, "AcceptThread: accept() failed", e);
+						break;
+					}
 				}
 
 				// If a connection was accepted
@@ -260,7 +286,6 @@ public class ConnectionService {
 				try {
 					// TODO store bytes in the external storage
 					// check for external storage device
-					File file;
 
 					if (isExtDrMounted) {
 						// Read from the InputStream
@@ -269,7 +294,7 @@ public class ConnectionService {
 						long fileLen = din.readLong();
 
 						// We can read and write the media
-						file = new File(path, fileName);
+						/*metaFile = new File(path, fileName);*/
 
 						try {
 							// Make sure the Pictures directory exists.
@@ -284,7 +309,7 @@ public class ConnectionService {
 							// try to copy it in chunks). Note that if external
 							// storage is
 							// not currently mounted this will silently fail.
-							OutputStream os = new FileOutputStream(file);
+							OutputStream os = new FileOutputStream(metaFile);
 							while (fileLen > 0) {
 								fileLen -= din.read(buffer);
 								os.write(buffer);
@@ -293,13 +318,13 @@ public class ConnectionService {
 							Toast.makeText(
 									context,
 									"File: " + fileName
-											+ " received siccessfully",
+											+ " received successfully",
 									Toast.LENGTH_LONG).show();
 						} catch (IOException e) {
 							// Unable to create file, likely because external
 							// storage is
 							// not currently mounted.
-							Log.e("ExternalStorage", "Error writing " + file, e);
+							Log.e("ExternalStorage", "Error writing " + metaFile, e);
 						}
 					}
 
@@ -312,7 +337,7 @@ public class ConnectionService {
 					Log.e(TAG, "disconnected", e);
 					connectionLost();
 					// Start the service over to restart listening mode
-					ConnectionService.this.start();
+					// ConnectionService.this.start();
 					break;
 				}
 			}
@@ -410,7 +435,7 @@ public class ConnectionService {
 	 * @param secure
 	 *            Socket Security type - Secure (true) , Insecure (false)
 	 */
-	public synchronized void connect(BluetoothDevice device) {
+	public void connect(BluetoothDevice device) {
 		Log.d(TAG, "connect to: " + device);
 
 		/*

@@ -4,6 +4,6 @@
     <string name="app_name">BluetoothFTPDemo</string>
     <string name="action_settings">Settings</string>
     <string name="hello_world">Hello world!</string>
-    <string name="bt_discover">Discover Bluetooth Devices</string>
+    <string name="bt_discover">Sync Bluetooth Data</string>
 
 </resources>
